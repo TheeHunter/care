@@ -1,0 +1,209 @@
+#admin
+from django.contrib import admin
+from Once import models
+
+# Register your models here.
+admin.site.register(models.Students)
+admin.site.register(models.Tutorial_Session)
+
+#form
+from django import forms
+from .models import Students, Tutorial_Session
+
+class Stud_Form(forms.ModelForm):
+    class Meta:
+        model = Students
+        fields = ['studName', 'studSurname', 'studNo']
+
+class Tutorial_SessionForm(forms.ModelForm):
+    class Meta:
+        model = Tutorial_Session
+        fields = ['ModuleCode', 'ModuleName', 'Sdate', 'Stime']
+
+#model
+from django.db import models
+
+# Create your models here.
+
+class Students(models.Model):
+    studName = models.CharField(max_length=50, blank=False, null=False )
+    studSurname= models.CharField(max_length=50,blank=False, null=False)
+    studNo = models.CharField(max_length=50,blank=False, unique= True, null=False)
+    
+    def __str__(self):
+        return  f"{self.studName} {self.studSurname}"
+
+class Tutorial_Session(models.Model):
+    ModuleCode = models.CharField(max_length=50, blank=False, default='DEFAULT_CODE')
+    ModuleName = models.CharField(max_length=50, blank=False, default='Default Module Name')
+    Sdate = models.DateField(auto_now=False, auto_now_add=False, blank=False, null=False)
+    Stime = models.TimeField( auto_now=False, auto_now_add=False, blank=False, null=False)
+    student = models.ForeignKey(Students, on_delete=models.CASCADE, related_name='sessions')
+    
+    def __str__(self):
+        return f"{self.ModuleName} ({self.ModuleCode}) on {self.Sdate} at {self.Stime}"
+
+#urls
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('book/', views.book_tutorial, name='book_tutorial'),
+    path('bookings/', views.booking_list, name='booking_list'),
+    path('bookings/<int:session_id>/', views.booking_detail, name='booking_detail'),
+
+]
+
+
+#views
+from django.shortcuts import render, redirect, get_object_or_404
+from .forms import Stud_Form, Tutorial_SessionForm
+from .models import Students,Tutorial_Session
+
+def book_tutorial(request):
+    if request.method == 'POST':
+        stud_form = Stud_Form(request.POST)
+        tutorial_form = Tutorial_SessionForm(request.POST)
+
+        if stud_form.is_valid() and tutorial_form.is_valid():
+            # Extract student info from the student form
+            student_name = stud_form.cleaned_data['studName']
+            student_surname = stud_form.cleaned_data['studSurname']
+            student_no = stud_form.cleaned_data['studNo']
+
+            # Check if student exists or create a new one
+            student, created = Students.objects.get_or_create(
+                studNo=student_no,
+                defaults={'studName': student_name, 'studSurname': student_surname}
+            )
+
+            # Save the tutorial session with the student
+            tutorial = tutorial_form.save(commit=False)
+            tutorial.student = student  # Associate the student with the tutorial session
+            tutorial.save()
+
+              # Replace 'success_url' with your actual success URL
+            return redirect('booking_list')
+    else:
+        stud_form = Stud_Form()
+        tutorial_form = Tutorial_SessionForm()
+
+    return render(request, 'form.html', {'stud_form': stud_form, 'tutorial_form': tutorial_form})
+
+
+def booking_list(request):
+    sessions = Tutorial_Session.objects.all()
+    return render(request, 'booking_list.html', {'sessions': sessions})
+
+def booking_detail(request, session_id):
+    # Get the Tutorial Session object or return 404 if not found
+    session = get_object_or_404(Tutorial_Session, id=session_id)
+
+    # Render the detail page with the session data
+    return render(request, 'booking_detail.html', {'session': session})
+
+def student_list(request):
+    students = Students.objects.all()  # Fetch all students from the database
+    return render(request, 'student_list.html', {'students': students})
+
+def studVery(request):
+    if request.method == 'POST':
+        form = Stud_Form(request.POST)
+        if form.is_valid():
+            form.save()
+        else:
+            print('There some issues with your thing')
+       
+    else:
+        form = Stud_Form()
+
+    return render(request,'form.html', {'form':form})
+
+
+#last url
+"""
+URL configuration for OnceMere project.
+
+The `urlpatterns` list routes URLs to views. For more information please see:
+    https://docs.djangoproject.com/en/5.1/topics/http/urls/
+Examples:
+Function views
+    1. Add an import:  from my_app import views
+    2. Add a URL to urlpatterns:  path('', views.home, name='home')
+Class-based views
+    1. Add an import:  from other_app.views import Home
+    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
+Including another URLconf
+    1. Import the include() function: from django.urls import include, path
+    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
+"""
+from django.contrib import admin
+from django.urls import path, include
+from Once import views
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('', include('Once.urls')),
+]
+
+#form html
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Book Tutorial</title>
+  </head>
+  <body>
+    <h1>Book a Tutorial</h1>
+    <form method="post">
+      {% csrf_token %} {{ stud_form.as_p }} {{ tutorial_form.as_p }}
+      <button type="submit">Submit</button>
+    </form>
+  </body>
+</html>
+
+#booking detail html
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Booking Detail</title>
+  </head>
+  <body>
+    <h1>Booking Detail</h1>
+    <p>
+      <strong>Module Name:</strong> {{ session.ModuleName }}<br />
+      <strong>Module Code:</strong> {{ session.ModuleCode }}<br />
+      <strong>Date:</strong> {{ session.Sdate }}<br />
+      <strong>Time:</strong> {{ session.Stime }}<br />
+      <strong>Student Name:</strong> {{ session.student.studName }}<br />
+      <strong>Student Surname:</strong>{{ session.student.studSurname }}<br />
+      <strong>Student Number:</strong> {{ session.student.studNo }}<br />
+    </p>
+    <a href="{% url 'booking_list' %}">Back to booking list</a>
+  </body>
+</html>
+
+#booking list html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Your Bookings</title>
+  </head>
+  <body>
+    <h1>Your Tutorial Bookings</h1>
+    <ul>
+      {% for session in sessions %}
+      <li>
+        <a href="{% url 'booking_detail' session.id %}">
+          {{ session.ModuleName }} on {{ session.Sdate }} at {{ session.Stime }}
+        </a>
+      </li>
+      {% empty %}
+      <li>No bookings available.</li>
+      {% endfor %}
+    </ul>
+    <a href="{% url 'book_tutorial' %}">Book a New Tutorial</a>
+  </body>
+</html>
+
